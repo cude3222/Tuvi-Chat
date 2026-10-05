@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Мой Чат (Изолированные Комнаты)</title>
+    <style>
+        :root {
+            --bg-color: #121214;
+            --panel-bg: #1a1a1e;
+            --text-color: #e2e8f0;
+            --accent-color: #00ff66;
+        }
+        body {
+            font-family: monospace;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            padding: 20px;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            width: 100%;
+            max-width: 600px;
+            display: flex;
+            flex-direction: column;
+            height: 90vh;
+        }
+        #window {
+            flex: 1;
+            background: var(--panel-bg);
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 15px;
+            overflow-y: auto;
+            margin-bottom: 15px;
+        }
+        #window::-webkit-scrollbar {
+            width: 6px;
+        }
+        #window::-webkit-scrollbar-track {
+            background: var(--panel-bg);
+        }
+        #window::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 3px;
+        }
+        .msg {
+            background: #222226;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            border-left: 3px solid var(--accent-color);
+        }
+        .msg.system-msg {
+            border-left-color: #ffaa00;
+            background: rgba(255, 170, 0, 0.05);
+        }
+        .msg.local-cmd {
+            border-left-color: #5555ff;
+            background: rgba(85, 85, 255, 0.05);
+            opacity: 0.85;
+        }
+        .time {
+            color: #666;
+            font-size: 11px;
+            margin-bottom: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .text {
+            font-size: 15px;
+            word-break: break-word;
+            white-space: pre-wrap;
+        }
+        #controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        textarea {
+            flex: 1;
+            background: var(--panel-bg);
+            border: 1px solid #444;
+            color: var(--text-color);
+            padding: 12px;
+            border-radius: 6px;
+            resize: none;
+            font-family: inherit;
+            outline: none;
+            height: 24px;
+        }
+        textarea:focus {
+            border-color: var(--accent-color);
+        }
+        button {
+            background: var(--accent-color);
+            color: #000;
+            border: none;
+            padding: 0 20px;
+            border-radius: 6px;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div id="window"></div>
+
+        <div id="controls">
+            <textarea id="message-input" placeholder="Введите текст или /help..."></textarea>
+            <button id="send-btn">Отправить</button>
+        </div>
+    </div>
+
+    <script>
+        const windowDiv = document.getElementById('window');
+        const input = document.getElementById('message-input');
+        const sendBtn = document.getElementById('send-btn');
+        
+        const USERNAME_KEY = 'chat_username';
+        let currentUsername = localStorage.getItem(USERNAME_KEY) || 'Вы';
+        let currentRoom = getRoomFromUrl();
+
+        function getRoomFromUrl() {
+            return window.location.hash.replace('#', '').trim() || 'main';
+        }
+
+        function getStorageKey() {
+            return `chat_messages_save_room_${currentRoom}`;
+        }
+
+        function drawMessage(sender, time, text, type = 'user') {
+            const msgDiv = document.createElement('div');
+            
+            if (type === 'system') msgDiv.className = 'msg system-msg';
+            else if (type === 'local') msgDiv.className = 'msg local-cmd';
+            else msgDiv.className = 'msg';
+
+            msgDiv.innerHTML = `
+                <div class="time">
+                    <span>${sender}</span>
+                    <span>${time}</span>
+                </div>
+                <div class="text"></div>
+            `;
+            msgDiv.querySelector('.text').textContent = text;
+            windowDiv.appendChild(msgDiv);
+            windowDiv.scrollTop = windowDiv.scrollHeight;
+        }
+
+        function loadRoomMessages() {
+            windowDiv.innerHTML = '';
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            drawMessage('Система', timeStr, `Добро пожаловать в чат-комнату: [${currentRoom}]`, 'system');
+
+            try {
+                const rawData = localStorage.getItem(getStorageKey());
+                if (rawData) {
+                    const messages = JSON.parse(rawData);
+                    if (Array.isArray(messages)) {
+                        messages.forEach(m => drawMessage(m.sender, m.time, m.text, m.type));
+                        return;
+                    }
+                }
+            } catch (e) { console.error(e); }
+            
+            drawMessage('Терминал', timeStr, 'Наберите /help для просмотра списка команд.', 'system');
+        }
+
+        function saveToMemory(sender, time, text, type = 'user') {
+            try {
+                const rawData = localStorage.getItem(getStorageKey());
+                const messages = rawData ? JSON.parse(rawData) : [];
+                messages.push({ sender, time, text, type });
+                localStorage.setItem(getStorageKey(), JSON.stringify(messages));
+            } catch (e) { console.error(e); }
+        }
+
+        function processCommand(commandText) {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            
+            const parts = commandText.split(' ');
+            const mainCommand = parts[0].toLowerCase();
+            const args = parts.slice(1).join(' ').trim();
+
+            if (mainCommand !== '/ddd_admin') {
+                drawMessage(currentUsername, timeStr, commandText, 'local');
+            }
+
+            switch (mainCommand) {
+                case '/help':
+                    drawMessage('Терминал', timeStr, 'Доступные команды:\n/help - Список команд\n/name [Имя] - Сменить никнейм\n/rooms - Название текущей комнаты\n/join [название] - Сменить комнату\n/shrug - Отправить смайл', 'system');
+                    break;
+                
+                case '/name':
+                    if (!args) {
+                        drawMessage('Терминал', timeStr, 'Ошибка: введите имя. Пример: /name Иван', 'system');
+                    } else if (args.length > 20) {
+                        drawMessage('Терминал', timeStr, 'Ошибка: имя слишком длинное.', 'system');
+                    } else {
+                        const oldName = currentUsername;
+                        currentUsername = args;
+                        localStorage.setItem(USERNAME_KEY, currentUsername);
+                        drawMessage('Терминал', timeStr, `Имя изменено с "${oldName}" на "${currentUsername}"`, 'system');
+                    }
+                    break;
+
+                case '/rooms':
+                    drawMessage('Терминал', timeStr, `Текущий чат: [${currentRoom}]. Переход: /join [название]`, 'system');
+                    break;
+
+                case '/join':
+                    if (!args) {
+                        drawMessage('Терминал', timeStr, 'Ошибка: укажите название комнаты. Пример: /join secret', 'system');
+                    } else {
+                        const cleanRoomName = args.replace(/[^a-zA-Z0-9а-яА-Я_]/g, '');
+                        window.location.hash = cleanRoomName;
+                    }
+                    break;
+                
+                case '/ddd_admin':
+                    if (confirm(`Удалить всю историю текущей комнаты [${currentRoom}]?`)) {
+                        localStorage.removeItem(getStorageKey());
+                        loadRoomMessages();
+                    }
+                    break;
+
+                case '/shrug':
+                    drawMessage(currentUsername, timeStr, '¯\\_(ツ)_/¯', 'user');
+                    saveToMemory(currentUsername, timeStr, '¯\\_(ツ)_/¯', 'user');
+                    break;
+
+                default:
+                    drawMessage('Терминал', timeStr, `Неизвестная команда: "${mainCommand}". Наберите /help`, 'system');
+                    break;
+            }
+        }
+
+        function handleSend() {
+            const text = input.value.trim();
+            if (!text) return;
+
+            if (text.startsWith('/')) {
+                processCommand(text);
+            } else {
+                const now = new Date();
+                const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                drawMessage(currentUsername, timeStr, text, 'user');
+                saveToMemory(currentUsername, timeStr, text, 'user');
+            }
+
+            input.value = '';
+            input.focus();
+        }
+
+        window.addEventListener('hashchange', () => {
+            currentRoom = getRoomFromUrl();
+            loadRoomMessages();
+        });
+
+        sendBtn.addEventListener('click', handleSend);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+            }
+        });
+
+        loadRoomMessages();
+    </script>
+</body>
+</html>
